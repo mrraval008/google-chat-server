@@ -24,5 +24,5 @@ io.on("connection",(socket:Socket)=>{
 })
 
 server.listen(port,()=>{
-        console.log("Listening to port 1",port)
+        console.log("Listening to port",port)
 })
