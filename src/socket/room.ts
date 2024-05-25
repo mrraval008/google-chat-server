@@ -1,52 +1,64 @@
-import {Socket} from "socket.io";
-import {v4 as uuidV4} from "uuid";
+import { Socket } from "socket.io";
+import { v4 as uuidV4 } from "uuid";
+import {
+    storeRoom,
+    updateRoomById,
+    RoomData,
+    getRoomById
+} from '../controllers/roomController'
 
-
-const rooms:Record<string,{peerId:string,name:string}[]> = {};
 export interface IMessage {
-    content:string,
-    author?:string,
-    timestamp:number
+    content: string,
+    author?: string,
+    timestamp: number
 }
 
-export function roomHandler(socket:Socket){
-    const createRoom = (userName:string)=>{
+export function roomHandler(socket: Socket) {
+    const createRoom = async (userName: string) => {
         const roomId = uuidV4();
-        socket.emit("room-created", {roomId,userName});
-        console.log("room is created",roomId,userName);
+        try{
+            await storeRoom({roomId,users:[]})
+
+        }catch(error){
+            console.log("error in room",error)
+        }
+        socket.emit("room-created", { roomId, userName });
+        console.log("room is created", roomId, userName);
     }
-    const joinRoom  = ({roomId,peerId,myName}:{roomId:string,peerId:string,myName:string})=>{
-        console.log("user joined the room",roomId,peerId,myName)
-        rooms[roomId] = rooms[roomId] ? rooms[roomId] : [];
-        rooms[roomId].push({peerId,name:myName});
+    const joinRoom = async ({ roomId, peerId, myName }: { roomId: string, peerId: string, myName: string }) => {
+        console.log("user joined the room", roomId, peerId, myName)
+        try{
+            const room = await getRoomById(roomId);
+            const roomData:RoomData = room.data[0];
+            if(roomData){
+                const combineUsers = [... roomData.users,{userName:myName,peerId}]
+                await updateRoomById(roomData._id,combineUsers)
+            }else{
+                console.log("no room found",roomId)
+                return;
+            }
+        }catch(error){
+            console.log("error in room",error)
+        }
         socket.join(roomId);
-        console.log("myname",myName)
-        socket.to(roomId).emit("user-joined",{peerId,name:myName})
-        socket.emit("get-users",{
-            roomId,
-            participants:rooms[roomId]
-        });
-        socket.on("disconnect",()=>{
-            console.log("user left",peerId);
-           leaveRoom(peerId,roomId)
+        socket.to(roomId).emit("user-joined", { peerId, name: myName })
+        socket.on("disconnect", () => {
+            console.log("user left", peerId);
+            leaveRoom(peerId, roomId)
         })
     }
-    function leaveRoom(peerId:string,roomId:string){
-        rooms[roomId] =  rooms[roomId].filter(elem=>peerId !== elem.peerId);
-        socket.to(roomId).emit("user-disconnected",peerId);
+    function leaveRoom(peerId: string, roomId: string) {
+        socket.to(roomId).emit("user-disconnected", peerId);
     }
 
-    const addMessage = (roomId:string,message:IMessage)=>{
-        console.log(message,roomId)
-        socket.to(roomId).emit("add-message",message)
+    const addMessage = (roomId: string, message: IMessage) => {
+        socket.to(roomId).emit("add-message", message)
     }
-    const onDisconnect = ()=>{
+    const onDisconnect = () => {
         socket.disconnect();
     }
-    socket.on("create-room",createRoom)
-    socket.on("join-room",joinRoom)
-    socket.on("send-message",addMessage)
-    socket.on('end',onDisconnect)
-
-
+    socket.on("create-room", createRoom)
+    socket.on("join-room", joinRoom)
+    socket.on("send-message", addMessage)
+    socket.on('end', onDisconnect)
 }
